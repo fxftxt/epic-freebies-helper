@@ -1483,3 +1483,11 @@
 - Changed files: app/services/epic_authorization_service.py; app/deploy.py; docs/maintenance-log.md.
 - Change: recognize only a visible frame=challenge hCaptcha iframe with a visible challenge-view. Keep pre-login security-page detection separate. Observe errors from login/authenticate/mfa responses, logging only fixed endpoint names, HTTP status, and error identifiers. Bound the entire authentication phase using the existing TASK_TIMEOUT_SECONDS (900 seconds by default), rather than letting nested retries consume the whole 60-minute job.
 - Validation: Python compilation, fatal-error lint, workflow syntax, and hCaptcha contract checks precede one new cloud attempt. No unit test suite is executed. Existing 2FA, model selection, zero-price checkout gates, and ownership evidence requirements remain in place.
+
+## 2026-11-13 — Preserve structured-output constraints in GLM requests
+
+- Symptom: cloud GLM answers frequently omitted challenge_prompt and needed alias/coordinate repair before satisfying the upstream response model.
+- Root-cause judgment: the adapter converted Gemini response_schema into response_format=json_object, which asks for JSON syntax but does not communicate required property names or nested object types. The original tool prompt does not enumerate those fields, so the server never received the actual schema.
+- Changed files: app/extensions/llm_adapter.py; docs/maintenance-log.md.
+- Change: include the upstream Pydantic JSON schema (or supplied schema dictionary) in the GLM system instruction, require its exact required fields, and retain existing response normalization for compatibility. The model, endpoint, API key handling, and visual coordinate system are unchanged.
+- Validation: Python compilation, fatal-error lint, hCaptcha protocol contract, and diff checks. No unit test suite is executed. Run 43383509935 remains on the preceding checkbox-detection revision; this schema change requires a subsequent cloud verification if that run remains blocked.

@@ -1093,6 +1093,24 @@ class _GLMAsyncModels:
         if system_instruction:
             system_messages.append(str(system_instruction))
 
+        response_schema = getattr(config, "response_schema", None)
+        if isinstance(response_schema, type) and issubclass(response_schema, BaseModel):
+            schema = response_schema.model_json_schema()
+        elif isinstance(response_schema, dict):
+            schema = response_schema
+        else:
+            schema = None
+        if schema is not None:
+            # json_object only guarantees JSON syntax. Gemini's response_schema
+            # constraint must also be conveyed to this OpenAI-compatible provider.
+            system_messages.append(
+                "Return one JSON object conforming to this response schema. Include every "
+                "required field, use the exact field names, and do not use markdown or "
+                "alternative answer formats. Read the challenge instruction from the image "
+                "when filling challenge_prompt; do not leave it blank. Response schema:\n"
+                + json.dumps(schema, ensure_ascii=False)
+            )
+
         for content in _ensure_list(contents):
             role = getattr(content, "role", None) or "user"
             items = []
