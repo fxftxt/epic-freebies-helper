@@ -83,12 +83,13 @@ def get_promotions() -> List[PromotionGame]:
     promotions: List[PromotionGame] = []
 
     resp = httpx.get(URL_PROMOTIONS, params={"local": "zh-CN"})
+    resp.raise_for_status()
 
     try:
         data = resp.json()
     except JSONDecodeError as err:
-        logger.error("Failed to get promotions", err=err)
-        return []
+        logger.error("Failed to decode Epic promotions response")
+        raise RuntimeError("Epic promotion snapshot unavailable: invalid JSON") from err
 
     with suppress(Exception):
         cache_key = RUNTIME_DIR.joinpath("promotions.json")

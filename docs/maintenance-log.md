@@ -1458,3 +1458,11 @@
 - Changed files: app/services/epic_authorization_service.py; docs/maintenance-log.md.
 - Change: advise keeping 2FA enabled, explain that email/SMS/Passkey need manual verification, and require the owner's explicit decision before authenticator-secret automation. No account setting or authentication behavior changes.
 - Validation: Python compilation and diff whitespace checks; no test suite or additional account login is performed.
+
+## 2026-11-13 — Reject invalid promotion snapshots
+
+- Symptom: an invalid JSON promotion response was converted to an empty list, allowing a successful summary to claim there were no free games without a valid snapshot.
+- Root cause: get_promotions swallowed JSON decoding errors and did not check the HTTP response status.
+- Changed files: app/services/epic_games_service.py; docs/maintenance-log.md.
+- Change: require an HTTP success response and raise an explicit error for invalid JSON. A failed promotion snapshot remains a failure instead of an empty successful result.
+- Validation: Python compilation, fatal-error lint rules, and diff whitespace checks; no test suite or additional account login is performed.
