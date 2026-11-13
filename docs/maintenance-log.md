@@ -1500,3 +1500,11 @@
 - Change: optional manual-only diagnose_captcha input stores only the last cropped challenge-view image, its coordinate grid, and an explicit allowlist of answer fields. No Epic page, credentials, cookies, raw model response, captcha token, or browser profile is uploaded. Files expire after one day. Diagnostics remain off for scheduled runs and ordinary dispatches.
 - Validation: Python compilation, fatal-error lint, workflow syntax, and protocol contract checks precede a single dispatch using both prior fixes and these limited diagnostics. Unit test execution remains prohibited.
 - Diagnostic dispatches use a five-minute authentication budget to limit ineffective model calls; normal dispatches and scheduled runs retain the fifteen-minute authentication limit. Successful authentication can still proceed to the usual guarded collection flow.
+
+## 2026-11-13 — Correct schema echo introduced by the GLM prompt change
+
+- Symptom: diagnostic run 43385871362 returned a JSON schema containing $defs/properties instead of an ImageAreaSelectChallenge answer, causing required-field validation errors. No diagnostic images were uploaded because saving occurred only after successful response parsing.
+- Root-cause judgment: embedding the full schema in the prompt led this model to echo it; the earlier adapter change introduced this regression. Image capture and diagnostic persistence were ordered too late to investigate parse failures.
+- Changed files: app/extensions/llm_adapter.py; app/extensions/hcaptcha_adapter.py; docs/maintenance-log.md.
+- Change: express the exact answer field names, nested point/path structure, and enum values as short textual requirements; explicitly require an answer instance and prohibit schema echo. Save only the already cropped challenge/grid before invoking the model and update the allowlisted answer fields afterward.
+- Validation: Python compilation, fatal-error lint, workflow syntax, and hCaptcha protocol contract before a new five-minute diagnostic dispatch. Unit test execution remains prohibited. No account setting, model name, or purchase safeguard changes.

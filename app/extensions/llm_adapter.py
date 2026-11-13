@@ -1103,13 +1103,28 @@ class _GLMAsyncModels:
         if schema is not None:
             # json_object only guarantees JSON syntax. Gemini's response_schema
             # constraint must also be conveyed to this OpenAI-compatible provider.
+            properties = schema.get("properties", {})
             system_messages.append(
-                "Return one JSON object conforming to this response schema. Include every "
-                "required field, use the exact field names, and do not use markdown or "
-                "alternative answer formats. Read the challenge instruction from the image "
-                "when filling challenge_prompt; do not leave it blank. Response schema:\n"
-                + json.dumps(schema, ensure_ascii=False)
+                "Solve the visual task and return the actual answer as one JSON object. "
+                "Do not return a JSON schema, $defs, properties, example values, or markdown. "
+                "Use these exact top-level answer fields: " + ", ".join(properties) + ". "
+                "Read the instruction shown in the image into challenge_prompt when that "
+                "field is present; do not leave it blank."
             )
+            if "points" in properties:
+                system_messages.append(
+                    "points is an array of objects with integer x and y fields. Each object "
+                    "must identify one selected target using the printed coordinate grid."
+                )
+            if "paths" in properties:
+                system_messages.append(
+                    "paths is an array of objects with start_point and end_point fields. "
+                    "Each point is an object with integer x and y fields."
+                )
+            for name in properties:
+                enum_values = _schema_enum_values(response_schema, name)
+                if enum_values:
+                    system_messages.append(f"{name} must be one of: {', '.join(sorted(enum_values))}.")
 
         for content in _ensure_list(contents):
             role = getattr(content, "role", None) or "user"

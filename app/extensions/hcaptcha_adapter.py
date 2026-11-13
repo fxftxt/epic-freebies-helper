@@ -32,11 +32,13 @@ def _save_cropped_captcha_diagnostic(raw: Path, projection: Path, response: Any,
         target.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(raw, target / "challenge.png")
         shutil.copyfile(projection, target / "grid.png")
-        answer = {
-            "challenge_prompt": response.challenge_prompt,
-            "points": [{"x": point.x, "y": point.y} for point in response.points],
-            "challenge_bounds": bbox,
-        }
+        answer = {"challenge_bounds": bbox, "status": "awaiting_model"}
+        if response is not None:
+            answer.update(
+                challenge_prompt=response.challenge_prompt,
+                points=[{"x": point.x, "y": point.y} for point in response.points],
+                status="model_answer_received",
+            )
         (target / "answer.json").write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
     except Exception as err:
         logger.warning("Could not save cropped captcha diagnostic | error_type={}", type(err).__name__)
@@ -728,6 +730,7 @@ def apply_hcaptcha_drag_patch() -> None:
                 user_prompt = _build_point_prompt(
                     base_prompt, challenge_bbox=challenge_bbox, clickable_bounds=clickable_bounds
                 )
+                _save_cropped_captcha_diagnostic(raw, projection, None, challenge_bbox)
                 response = await self._spatial_point_reasoner(
                     challenge_screenshot=raw,
                     grid_divisions=projection,
