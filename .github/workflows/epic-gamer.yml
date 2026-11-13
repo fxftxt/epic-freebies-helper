@@ -19,7 +19,8 @@ env:
 
 jobs:
   epic-gamer:
-    runs-on: ubuntu-latest
+    # Playwright 1.53 supports Ubuntu 24.04; ubuntu-latest can resolve to 26.04.
+    runs-on: ubuntu-24.04
     # A single account run can take 15-20 minutes. Multi-account runs are
     # sequential, so scale the timeout with the number of accounts by setting
     # a repository variable JOB_TIMEOUT_MINUTES (Settings -> Secrets and

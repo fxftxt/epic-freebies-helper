@@ -1426,3 +1426,11 @@
 - Validation: static inspection, Python compilation, Ruff, and workflow validation are used; repository AGENTS.md prohibits executing tests. End-to-end login and ownership verification remain pending user-entered Secrets and a supported authentication path.
 
 - Final static validation: actionlint passed; Python compilation passed; Ruff fatal-error rules passed. Existing broader upstream lint findings were not refactored. The hCaptcha protocol contract check passed (4 challenge types / 16 request types). Updated uv.lock only for vulnerable packages and their required transitive dependencies within existing pyproject constraints; pip-audit changed from 18 affected packages / 205 advisory records (including duplicates) to no known vulnerabilities on 2026-11-13. No unit test suite was executed. No account credentials were used locally.
+
+## 2026-11-13 — Pin the hosted runner after first cloud smoke run
+
+- Symptom: run 43376233080 failed before Epic login while installing the Firefox fallback, with `Playwright does not support firefox on ubuntu26.04-x64`.
+- Root cause: `ubuntu-latest` migrated to Ubuntu 26.04, but the upstream Playwright 1.53.0 browser registry supports Ubuntu 24.04 and does not supply Firefox for 26.04.
+- Changed files: .github/workflows/epic-gamer.yml; docs/maintenance-log.md.
+- Change: pin only this scheduled claiming job to ubuntu-24.04; retain the upstream browser versions and fallback flow.
+- Result: required Secrets presence, dependency installation, hCaptcha contract, and Camoufox download passed in the first run. Epic credentials were not used because the claiming step was skipped. Workflow syntax validation and a new cloud smoke run follow this runner correction.
