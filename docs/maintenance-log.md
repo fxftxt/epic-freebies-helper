@@ -1434,3 +1434,11 @@
 - Changed files: .github/workflows/epic-gamer.yml; docs/maintenance-log.md.
 - Change: pin only this scheduled claiming job to ubuntu-24.04; retain the upstream browser versions and fallback flow.
 - Result: required Secrets presence, dependency installation, hCaptcha contract, and Camoufox download passed in the first run. Epic credentials were not used because the claiming step was skipped. Workflow syntax validation and a new cloud smoke run follow this runner correction.
+
+## 2026-11-13 — Correct the weekly schedule for Pacific standard time
+
+- Symptom: the inherited Thursday 15:20 UTC / 23:20 Beijing schedule runs 40 minutes before the weekly refresh during Pacific standard time.
+- Root cause: Epic officially refreshes at Thursday 08:00 PT, which is 16:00 UTC in winter and 15:00 UTC in summer; the upstream comment omitted daylight saving changes.
+- Changed files: .github/workflows/epic-gamer.yml; docs/maintenance-log.md.
+- Change: use Thursday 16:20 UTC (`20 16 * * 4`), equivalent to Friday 00:20 Asia/Shanghai year-round. This follows the refresh by 20 minutes in winter and 80 minutes in summer.
+- Result: next scheduled trigger is 2026-11-20 00:20 Asia/Shanghai. A running manual dispatch keeps its existing revision; this schedule correction does not interrupt it. Official source: https://www.epicgames.com/help/c-41804731/c-Trending_0/can-i-get-more-information-about-the-weekly-free-game-on-the-epic-games-store-a21954037 .
