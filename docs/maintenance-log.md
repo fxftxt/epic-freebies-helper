@@ -1450,3 +1450,11 @@
 - Changed files: .github/workflows/epic-gamer.yml; docs/maintenance-log.md.
 - Change: pass `--locked --no-dev` to the contract check, browser setup, and claiming entrypoint, matching the audited 97-package production export.
 - Result: syntax validation follows; the application source, browser versions, model routing, and current running dispatch are unchanged.
+
+## 2026-11-13 — Preserve two-factor authentication in failure guidance
+
+- Symptom: upstream authentication errors recommended disabling Epic 2FA and described enabled 2FA itself as the failure.
+- Root cause: the diagnostic text did not distinguish unsupported verification methods from a security setting that should be preserved.
+- Changed files: app/services/epic_authorization_service.py; docs/maintenance-log.md.
+- Change: advise keeping 2FA enabled, explain that email/SMS/Passkey need manual verification, and require the owner's explicit decision before authenticator-secret automation. No account setting or authentication behavior changes.
+- Validation: Python compilation and diff whitespace checks; no test suite or additional account login is performed.

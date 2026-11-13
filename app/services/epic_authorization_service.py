@@ -799,8 +799,9 @@ class EpicAuthorization:
             await self.page.screenshot(path=sr.joinpath(f"login-{int(time.time())}.png"))
             if isinstance(err, EpicAuthenticationFatalError):
                 logger.error(
-                    "Epic account requires two-factor authentication. Configure EPIC_TOTP_SECRET "
-                    "for authenticator app 2FA, or disable Epic 2FA and rerun the workflow."
+                    "Epic account requires two-factor authentication. Keep 2FA enabled. "
+                    "Email, SMS, or Passkey verification requires manual action; authenticator "
+                    "automation requires the account owner's explicit approval and EPIC_TOTP_SECRET."
                 )
                 raise
             if isinstance(err, EpicManualActionRequiredError):
@@ -835,7 +836,7 @@ class EpicAuthorization:
             except EpicManualActionRequiredError:
                 raise
             except EpicAuthenticationFatalError:
-                logger.error("Authentication aborted because Epic 2FA is still enabled")
+                logger.error("Authentication stopped because this run cannot complete the required 2FA method")
                 return False
 
             if attempt < max_attempts:
