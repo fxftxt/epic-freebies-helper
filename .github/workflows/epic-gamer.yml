@@ -1,7 +1,13 @@
 name: Epic Awesome Gamer (Scheduled)
 
 on:
-  workflow_dispatch: # 手动触发
+  workflow_dispatch:
+    inputs:
+      diagnose_captcha:
+        description: 'Save only cropped captcha images and answer coordinates for one day'
+        type: boolean
+        required: false
+        default: false
   schedule:
     # Epic 周四 08:00 太平洋时间更新：冬令时 16:00 UTC，夏令时 15:00 UTC。
     # 固定周四 16:20 UTC（北京时间周五 00:20），全年均在更新后运行。
@@ -114,6 +120,9 @@ jobs:
           MPLBACKEND: Agg
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYTHONPATH: app
+          CAPTCHA_DIAGNOSTICS: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_captcha && 'true' || 'false' }}
+          # Limit diagnostic model spend; normal runs retain a 15-minute auth budget.
+          TASK_TIMEOUT_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_captcha && '300' || '900' }}
         run: |
           echo "🚀 启动定时领取任务（支持 Gemini/AiHubMix/GLM）..."
           xvfb-run --auto-servernum --server-num=1 --server-args='-screen 0, 1920x1080x24' uv run --locked --no-dev app/deploy.py
@@ -161,3 +170,15 @@ jobs:
           path: app/volumes/runtime/claim-verification.json
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Upload cropped captcha diagnostic
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.diagnose_captcha }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: captcha-diagnostic-${{ github.run_id }}
+          path: |
+            app/volumes/runtime/captcha-diagnostics/challenge.png
+            app/volumes/runtime/captcha-diagnostics/grid.png
+            app/volumes/runtime/captcha-diagnostics/answer.json
+          if-no-files-found: ignore
+          retention-days: 1

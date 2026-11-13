@@ -1491,3 +1491,12 @@
 - Changed files: app/extensions/llm_adapter.py; docs/maintenance-log.md.
 - Change: include the upstream Pydantic JSON schema (or supplied schema dictionary) in the GLM system instruction, require its exact required fields, and retain existing response normalization for compatibility. The model, endpoint, API key handling, and visual coordinate system are unchanged.
 - Validation: Python compilation, fatal-error lint, hCaptcha protocol contract, and diff checks. No unit test suite is executed. Run 43383509935 remains on the preceding checkbox-detection revision; this schema change requires a subsequent cloud verification if that run remains blocked.
+
+## 2026-11-13 — Inspect cropped captcha evidence on an explicit manual run
+
+- Symptom: run 43383509935 ended at the new 900-second authentication limit, with 17 captcha-failure signals, no success signal, and no observed login/authenticate/mfa JSON response. No collection or ownership evidence was produced. The checkbox correction alone did not complete this cloud login.
+- Root-cause judgment: image challenge completion remains the observed blocker. Existing logs cannot distinguish incorrect visual answers from coordinate or execution issues, so another blind retry would not resolve that uncertainty.
+- Changed files: app/extensions/hcaptcha_adapter.py; .github/workflows/epic-gamer.yml; docs/maintenance-log.md.
+- Change: optional manual-only diagnose_captcha input stores only the last cropped challenge-view image, its coordinate grid, and an explicit allowlist of answer fields. No Epic page, credentials, cookies, raw model response, captcha token, or browser profile is uploaded. Files expire after one day. Diagnostics remain off for scheduled runs and ordinary dispatches.
+- Validation: Python compilation, fatal-error lint, workflow syntax, and protocol contract checks precede a single dispatch using both prior fixes and these limited diagnostics. Unit test execution remains prohibited.
+- Diagnostic dispatches use a five-minute authentication budget to limit ineffective model calls; normal dispatches and scheduled runs retain the fifteen-minute authentication limit. Successful authentication can still proceed to the usual guarded collection flow.

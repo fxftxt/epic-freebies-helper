@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import asyncio
 import itertools
+import json
+import os
+import shutil
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -17,6 +20,26 @@ from extensions.numbered_line_solver import solve_numbered_line_drag
 
 
 _EMPTY_CHECKCAPTCHA_GRACE_SECONDS = 5.0
+
+
+def _save_cropped_captcha_diagnostic(raw: Path, projection: Path, response: Any, bbox: Any) -> None:
+    if os.getenv("CAPTCHA_DIAGNOSTICS", "").lower() != "true":
+        return
+    try:
+        # These inputs are screenshots of the iframe's challenge-view only,
+        # not the surrounding Epic page, browser profile, or network payload.
+        target = Path(__file__).resolve().parents[1] / "volumes/runtime/captcha-diagnostics"
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(raw, target / "challenge.png")
+        shutil.copyfile(projection, target / "grid.png")
+        answer = {
+            "challenge_prompt": response.challenge_prompt,
+            "points": [{"x": point.x, "y": point.y} for point in response.points],
+            "challenge_bounds": bbox,
+        }
+        (target / "answer.json").write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
+    except Exception as err:
+        logger.warning("Could not save cropped captcha diagnostic | error_type={}", type(err).__name__)
 
 
 def _longest_contiguous_run(values: np.ndarray) -> list[int]:
@@ -711,6 +734,7 @@ def apply_hcaptcha_drag_patch() -> None:
                     auxiliary_information=user_prompt,
                 )
                 logger.debug(f'[{cid+1}/{crumb_count}]ToolInvokeMessage: {response.log_message}')
+                _save_cropped_captcha_diagnostic(raw, projection, response, challenge_bbox)
 
                 validation_error = _point_answer_validation_error(
                     response.points,
