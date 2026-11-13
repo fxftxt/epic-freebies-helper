@@ -86,7 +86,15 @@ async def execute_browser_tasks(headless: bool | str = True, *, collect_summary:
         # Handle Epic Games authentication
         logger.debug("Initiating Epic Games authentication")
         agent = EpicAuthorization(page)
-        is_authenticated = await agent.invoke()
+        try:
+            is_authenticated = await asyncio.wait_for(
+                agent.invoke(), timeout=settings.TASK_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError as err:
+            raise RuntimeError(
+                f"Epic authentication exceeded {settings.TASK_TIMEOUT_SECONDS} seconds; "
+                "stopping repeated captcha requests before collection"
+            ) from err
         if not is_authenticated:
             raise RuntimeError("Authentication failed, aborting this run")
         logger.debug("Authentication completed")

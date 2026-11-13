@@ -10,6 +10,7 @@ import json
 import os
 import time
 from contextlib import suppress
+from urllib.parse import parse_qs, urlsplit
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -49,18 +50,42 @@ class EpicAuthorization:
         self._last_captcha_totp_refresh_at = 0.0
 
     async def _on_response_anything(self, r: Response):
-        if r.request.method != "POST" or "talon" in r.url:
+        parsed_url = urlsplit(r.url)
+        if r.request.method != "POST" or not (
+            parsed_url.hostname == "epicgames.com"
+            or (parsed_url.hostname or "").endswith(".epicgames.com")
+        ):
             return
 
         with suppress(Exception):
             result = await r.json()
+            if not isinstance(result, dict):
+                return
 
-            if "/id/api/login" in r.url and result.get("errorCode"):
+            path = parsed_url.path
+            auth_endpoint = next(
+                (
+                    name
+                    for name in ("login", "authenticate", "mfa")
+                    if path == f"/id/api/{name}" or path.startswith(f"/id/api/{name}/")
+                ),
+                None,
+            )
+            if auth_endpoint:
+                # Only fixed endpoint names, status, and Epic's error identifier; never
+                # response bodies, query strings, account identifiers, or request data.
+                logger.info(
+                    "Epic authentication response | endpoint={} | http_status={} | error_code={}",
+                    auth_endpoint,
+                    r.status,
+                    result.get("errorCode") or "none",
+                )
+            if auth_endpoint and result.get("errorCode"):
                 self._login_error_signal.put_nowait(result)
                 logger.error("Epic login rejected | error_code={}", result.get("errorCode"))
-            elif "/id/api/analytics" in r.url and result.get("accountId"):
+            elif path == "/id/api/analytics" and result.get("accountId"):
                 self._is_login_success_signal.put_nowait(result)
-            elif "/account/v2/refresh-csrf" in r.url and result.get("success", False) is True:
+            elif path == "/account/v2/refresh-csrf" and result.get("success", False) is True:
                 self._is_refresh_csrf_signal.put_nowait(result)
             # else:
             #     logger.debug(f"{r.request.method} {r.url} - {result_json}")
@@ -270,7 +295,13 @@ class EpicAuthorization:
 
     async def _has_visible_hcaptcha(self) -> bool:
         for frame in self.page.frames:
-            if "hcaptcha" in (frame.url or "").lower():
+            frame_url = urlsplit(frame.url or "")
+            frame_params = {**parse_qs(frame_url.query), **parse_qs(frame_url.fragment)}
+            is_challenge = (
+                (frame_url.hostname or "").endswith(".hcaptcha.com")
+                and frame_params.get("frame") == ["challenge"]
+            )
+            if is_challenge:
                 with suppress(Exception):
                     frame_element = await frame.frame_element()
                     visible = await frame_element.evaluate(
@@ -285,19 +316,12 @@ class EpicAuthorization:
                         }
                         """
                     )
-                    if visible:
+                    if visible and await frame.locator(".challenge-view").is_visible():
                         return True
 
-        body = (await self._page_body_text()).lower()
-        return any(
-            marker in body
-            for marker in (
-                "one more step",
-                "please complete a security check",
-                "verify you are human",
-                "i am human",
-            )
-        )
+        # The checkbox iframe and its "I am human" label remain visible after
+        # verification. They must not keep the image-solving loop alive or mask MFA.
+        return False
 
     async def _wait_for_login_form(self, point_url: str) -> None:
         deadline = time.monotonic() + 45

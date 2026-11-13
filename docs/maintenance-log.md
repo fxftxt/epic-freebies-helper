@@ -1475,3 +1475,11 @@
 - Changed files: docs/maintenance-log.md only for this result.
 - Result: cancelled run 43376511261 deliberately at 2026-11-13 14:46 Asia/Shanghai to stop repeated ineffective model calls and retrieve final logs. Its conclusion is cancelled, not success or timeout. No additional claiming run was started. The workflow remains active with Thursday 16:20 UTC / Friday 00:20 Beijing scheduling, upstream finite retries, 60-minute protection, and serialized runs, as requested. Actual login, checkout, and new ownership remain unverified. Keep the user's existing 2FA settings and never request credentials in chat.
 - Upstream review: master remains d90190bf3f9f87e9da71c50c81f155c4586bdb33 as of this review; open issue #30 reports a similar captcha-failure loop and has no merged corrective release. No speculative captcha/browser/model rewrite is applied.
+
+## 2026-11-13 — Distinguish active challenges from persistent hCaptcha checkboxes
+
+- Symptom: run 43376511261 repeatedly entered the captcha solve branch after success signals, without completing login or reaching collection.
+- Root-cause judgment: _has_visible_hcaptcha accepted any visible hCaptcha iframe and even the persistent checkbox label. A checkbox can remain visible after verification, causing false active-challenge detection and taking precedence over password-form resubmission or MFA handling. This is a concrete logic defect; its contribution to this account's complete failure still needs cloud verification.
+- Changed files: app/services/epic_authorization_service.py; app/deploy.py; docs/maintenance-log.md.
+- Change: recognize only a visible frame=challenge hCaptcha iframe with a visible challenge-view. Keep pre-login security-page detection separate. Observe errors from login/authenticate/mfa responses, logging only fixed endpoint names, HTTP status, and error identifiers. Bound the entire authentication phase using the existing TASK_TIMEOUT_SECONDS (900 seconds by default), rather than letting nested retries consume the whole 60-minute job.
+- Validation: Python compilation, fatal-error lint, workflow syntax, and hCaptcha contract checks precede one new cloud attempt. No unit test suite is executed. Existing 2FA, model selection, zero-price checkout gates, and ownership evidence requirements remain in place.
