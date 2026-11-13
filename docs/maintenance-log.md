@@ -1442,3 +1442,11 @@
 - Changed files: .github/workflows/epic-gamer.yml; docs/maintenance-log.md.
 - Change: use Thursday 16:20 UTC (`20 16 * * 4`), equivalent to Friday 00:20 Asia/Shanghai year-round. This follows the refresh by 20 minutes in winter and 80 minutes in summer.
 - Result: next scheduled trigger is 2026-11-20 00:20 Asia/Shanghai. A running manual dispatch keeps its existing revision; this schedule correction does not interrupt it. Official source: https://www.epicgames.com/help/c-41804731/c-Trending_0/can-i-get-more-information-about-the-weekly-free-game-on-the-epic-games-store-a21954037 .
+
+## 2026-11-13 — Keep every uv invocation on audited production dependencies
+
+- Symptom: an initial `uv sync --locked --no-dev` alone does not prevent subsequent unqualified `uv run` commands from reinstalling development dependencies.
+- Root cause: each uv project invocation applies its own dependency-group selection.
+- Changed files: .github/workflows/epic-gamer.yml; docs/maintenance-log.md.
+- Change: pass `--locked --no-dev` to the contract check, browser setup, and claiming entrypoint, matching the audited 97-package production export.
+- Result: syntax validation follows; the application source, browser versions, model routing, and current running dispatch are unchanged.
