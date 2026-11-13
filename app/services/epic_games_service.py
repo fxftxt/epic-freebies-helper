@@ -99,6 +99,10 @@ def get_promotions() -> List[PromotionGame]:
     for e in data["data"]["Catalog"]["searchStore"]["elements"]:
         if not is_discount_game(e):
             continue
+        # Fail closed if the promotion feed does not confirm a zero final price.
+        final_price = e.get("price", {}).get("totalPrice", {}).get("discountPrice")
+        if type(final_price) is not int or final_price != 0:
+            continue
 
         # -----------------------------------------------------------
         # 🟢 智能 URL 识别逻辑
@@ -308,7 +312,8 @@ class EpicAgent:
         return set(self._namespaces)
 
     async def _check_orders(self):
-        await self._sync_order_history()
+        if not await self._sync_order_history():
+            raise RuntimeError("Order history unavailable; refusing to risk duplicate claims")
         self._namespaces = self._namespaces or [order.namespace for order in self._orders]
         all_promotions = get_promotions()
         claimed_promotions = [p for p in all_promotions if p.namespace in self._namespaces]
@@ -1168,11 +1173,31 @@ class EpicGames:
         raise AssertionError("Could not find checkout submit button in checkout containers")
 
     @staticmethod
+    async def _assert_zero_checkout_total(wpc: PurchaseContainer) -> None:
+        """Submit only when the visible checkout Total is unambiguously zero."""
+        labels = wpc.get_by_text("Total", exact=True)
+        currency = r"(?:US\$|CA\$|AU\$|HK\$|NZ\$|[$€£¥₹]|USD|CNY|EUR|GBP|JPY|CAD|AUD|HKD)"
+        zero = rf"(?:{currency}\s*)?0+(?:[.,]0{{1,2}})?(?:\s*{currency})?"
+        for index in range(await labels.count()):
+            label = labels.nth(index)
+            if not await label.is_visible():
+                continue
+            row = label
+            for _ in range(3):
+                row = row.locator("..")
+                text = " ".join((await row.inner_text(timeout=2000)).split())
+                if re.fullmatch(rf"Total\s+{zero}", text, re.IGNORECASE):
+                    logger.info("Safety check: visible checkout total is zero")
+                    return
+        raise RuntimeError("Safety stop: cannot verify a zero checkout total; order not submitted")
+
+    @staticmethod
     async def _uk_confirm_order(wpc: PurchaseContainer):
         logger.debug("UK confirm order")
         with suppress(TimeoutError):
             accept = wpc.locator("//button[contains(@class, 'payment-confirm__btn')]")
             if await accept.is_enabled(timeout=5000):
+                await EpicGames._assert_zero_checkout_total(wpc)
                 await accept.click()
                 return True
 
@@ -1632,12 +1657,11 @@ class EpicGames:
             await payment_btn.scroll_into_view_if_needed(timeout=2000)
 
         async def current_payment_button():
-            with suppress(Exception):
-                _wpc, refreshed_btn = await self._active_purchase_container(
-                    self.page, place_order_timeout=1000, confirm_timeout=500
-                )
-                return refreshed_btn
-            return payment_btn
+            wpc, refreshed_btn = await self._active_purchase_container(
+                self.page, place_order_timeout=1000, confirm_timeout=500
+            )
+            await self._assert_zero_checkout_total(wpc)
+            return refreshed_btn
 
         click_attempts = (
             ("standard", lambda btn: btn.click(timeout=5000)),
@@ -2004,7 +2028,10 @@ class EpicGames:
 
             # 5. 白名单检查 (Add to Cart 特殊处理)
             # 如果包含 'CART'，说明是加入购物车流程
-            if "CART" in btn_text_upper:
+            if btn_text_upper.strip() == "ADD TO CART":
+                free_labels = page.get_by_text("Free", exact=True)
+                if not any([await free_labels.nth(i).is_visible() for i in range(await free_labels.count())]):
+                    raise RuntimeError("Safety stop: Add to Cart product not visibly free")
                 logger.debug(f"🛒 Logic: Add To Cart - {url=}")
                 if not await self._click_purchase_button(page, purchase_btn, url):
                     failed_urls.append(url)
@@ -2012,10 +2039,12 @@ class EpicGames:
                 has_pending_cart_items = True
                 continue
 
-            # 6. 默认处理 (盲点逻辑)
-            # 只要不是黑名单，也不是购物车，统统当做 "Get/Purchase" 直接点击！
-            # 不管它写的是 'Get', 'Free', 'Purchase', 'Buy Now'，只要 API 说是免费的，我们就点！
-            logger.debug(f"⚡️ Logic: Aggressive Click (Text: {btn_text}) - {url=}")
+            # Do not interact with Buy Now/Purchase or an unknown purchase action.
+            if btn_text_upper.strip() not in {"GET", "FREE", "GET FOR FREE", "ADD TO LIBRARY"}:
+                logger.error("Safety stop: product does not show a recognized free claim action")
+                failed_urls.append(url)
+                continue
+            logger.debug(f"Free claim action: {btn_text} - {url=}")
             if await EpicGames._is_device_not_supported_visible(page):
                 logger.warning(
                     f"Pre-click: device not supported modal detected, dismissing first. {url=}"
@@ -2038,26 +2067,16 @@ class EpicGames:
         return has_pending_cart_items, instant_claimed, failed_urls
 
     async def _empty_cart(self, page: Page, wait_rerender: int = 30) -> bool | None:
-        has_paid_free = False
-        try:
-            cards = await page.query_selector_all("//div[@data-testid='offer-card-layout-wrapper']")
-            for card in cards:
-                is_free = await card.query_selector("//span[text()='Free']")
-                if not is_free:
-                    has_paid_free = True
-                    wishlist_btn = await card.query_selector(
-                        "//button//span[text()='Move to wishlist']"
-                    )
-                    await wishlist_btn.click()
-
-            if has_paid_free and wait_rerender:
-                wait_rerender -= 1
-                await page.wait_for_timeout(2000)
-                return await self._empty_cart(page, wait_rerender)
-            return True
-        except TimeoutError as err:
-            logger.warning("Failed to empty shopping cart", err=err)
+        # Inspect only. Never remove or move paid products from the user's cart.
+        cards = page.locator("div[data-testid='offer-card-layout-wrapper']")
+        if not await cards.count():
             return False
+        for index in range(await cards.count()):
+            card = cards.nth(index)
+            if not await card.get_by_text("Free", exact=True).is_visible():
+                logger.error("Safety stop: cart contains a paid or unrecognized product")
+                return False
+        return True
 
     async def _purchase_free_game(self, max_attempts: int = 3):
         last_error: Exception | None = None
@@ -2065,8 +2084,8 @@ class EpicGames:
         for attempt in range(1, max_attempts + 1):
             try:
                 await self.page.goto(URL_CART, wait_until="domcontentloaded")
-                logger.debug("Move ALL paid games from the shopping cart out")
-                await self._empty_cart(self.page)
+                if not await self._empty_cart(self.page):
+                    raise RuntimeError("Safety stop: cart was not confirmed to contain only free games")
 
                 agent = AgentV(page=self.page, agent_config=settings)
                 await self.page.click("//button//span[text()='Check Out']")
@@ -2074,6 +2093,7 @@ class EpicGames:
 
                 logger.debug("Move to webPurchaseContainer iframe")
                 wpc, payment_btn = await self._active_purchase_container(self.page)
+                await self._assert_zero_checkout_total(wpc)
                 logger.debug("Click payment button")
                 await self._uk_confirm_order(wpc)
                 challenge_signal = await wait_for_challenge_signal(

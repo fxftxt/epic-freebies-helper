@@ -54,11 +54,10 @@ class EpicAuthorization:
 
         with suppress(Exception):
             result = await r.json()
-            result_json = json.dumps(result, indent=2, ensure_ascii=False)
 
             if "/id/api/login" in r.url and result.get("errorCode"):
                 self._login_error_signal.put_nowait(result)
-                logger.error(f"{r.request.method} {r.url} - {result_json}")
+                logger.error("Epic login rejected | error_code={}", result.get("errorCode"))
             elif "/id/api/analytics" in r.url and result.get("accountId"):
                 self._is_login_success_signal.put_nowait(result)
             elif "/account/v2/refresh-csrf" in r.url and result.get("success", False) is True:

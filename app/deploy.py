@@ -35,7 +35,7 @@ from services.wxpush_notification_service import (
     send_collection_summary_to_wxpush,
     wxpush_notifications_enabled,
 )
-from settings import LOG_DIR
+from settings import LOG_DIR, RUNTIME_DIR
 from settings import settings
 from utils import init_log
 
@@ -95,11 +95,31 @@ async def execute_browser_tasks(headless: bool | str = True, *, collect_summary:
         logger.debug("Starting free games collection process")
         game_page = await browser.new_page()
         agent = EpicAgent(game_page)
-        if collect_summary:
-            summary = await collect_epic_games_with_summary(agent)
-        else:
-            await agent.collect_epic_games()
-            summary = None
+        summary = await collect_epic_games_with_summary(agent)
+        verified = not summary.unconfirmed_promotions and not summary.error_message
+        # Only this account-free report is uploaded; never raw browser/runtime files.
+        report = {
+            "verified": verified,
+            "evidence": "Epic order history before and after collection",
+            "games": [
+                {
+                    "title": promotion.title,
+                    "offer_id": promotion.id,
+                    "status": (
+                        "newly_claimed" if promotion in summary.newly_claimed_promotions
+                        else "previously_owned" if promotion in summary.previously_claimed_promotions
+                        else "unconfirmed"
+                    ),
+                }
+                for promotion in summary.all_promotions
+            ],
+        }
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        RUNTIME_DIR.joinpath("claim-verification.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        if not verified:
+            raise RuntimeError("Claim verification incomplete; see the sanitized verification report")
         logger.debug("Free games collection completed")
 
         # Cleanup browser resources

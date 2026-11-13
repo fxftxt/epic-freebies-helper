@@ -7,6 +7,13 @@ on:
     # 该时间点放在 Epic 周免刷新之后，避免过早触发。
     - cron: '20 15 * * 4'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: epic-weekly-claims
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -23,8 +30,23 @@ jobs:
     if: github.repository != 'Ronchy2000/epic-freebies-helper'
 
     steps:
+      - name: Check required secret presence
+        env:
+          EPIC_EMAIL: ${{ secrets.EPIC_EMAIL }}
+          EPIC_PASSWORD: ${{ secrets.EPIC_PASSWORD }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          missing=0
+          for name in EPIC_EMAIL EPIC_PASSWORD GLM_API_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required GitHub Actions Secret is missing: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -40,7 +62,7 @@ jobs:
           sudo apt-get install -y xvfb libxml2-dev libxslt-dev
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked --no-dev
 
       - name: Validate hCaptcha protocol contract
         env:
@@ -76,7 +98,7 @@ jobs:
           GEMINI_BASE_URL: ${{ secrets.GEMINI_BASE_URL }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || secrets.GEMINI_MODEL }}
           GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
-          GLM_BASE_URL: ${{ secrets.GLM_BASE_URL }}
+          GLM_BASE_URL: ${{ vars.GLM_BASE_URL || secrets.GLM_BASE_URL }}
           GLM_MODEL: ${{ vars.GLM_MODEL || secrets.GLM_MODEL }}
           CHALLENGE_CLASSIFIER_MODEL: ${{ vars.CHALLENGE_CLASSIFIER_MODEL || secrets.CHALLENGE_CLASSIFIER_MODEL }}
           IMAGE_CLASSIFIER_MODEL: ${{ vars.IMAGE_CLASSIFIER_MODEL || secrets.IMAGE_CLASSIFIER_MODEL }}
@@ -95,81 +117,46 @@ jobs:
           echo "🚀 启动定时领取任务（支持 Gemini/AiHubMix/GLM）..."
           xvfb-run --auto-servernum --server-num=1 --server-args='-screen 0, 1920x1080x24' uv run app/deploy.py
 
-      - name: Write success summary
+      - name: Verify claim evidence and write summary
         if: success()
         run: |
-          if grep -Rqs -E \
-            'unable to download any more free games|wait 24 hours before trying again|24-hour free-game limit detected' \
-            app/volumes/logs/ app/volumes/runtime/ 2>/dev/null; then
-            {
-              echo "## Run stopped: Epic 24-hour limit"
-              echo
-              echo "Action 已正常结束，但本次领取未成功：Epic 已限制该账号继续领取免费游戏。"
-              echo
-              echo "No successful claim was confirmed for the affected account. Wait at least 24 hours before running the workflow again."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "## Run completed"
-              echo
-              echo "The workflow completed successfully."
-              echo
-              echo "- Share successful runs here: [Share your successful runs here / 成功领取的来这里留言！ #3](https://github.com/Ronchy2000/epic-freebies-helper/discussions/3)"
-              echo "- If the game was already in your library, Epic may not send a separate confirmation email. Review the logs and artifacts when verification is needed."
-              echo "- If you later report an issue from a private fork, upload the artifact zip files because maintainers cannot access private Actions pages."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path("app/volumes/runtime/claim-verification.json")
+          if not report.is_file():
+              raise SystemExit("No order-history verification report; claim is NOT confirmed")
+          data = json.loads(report.read_text(encoding="utf-8"))
+          if data.get("verified") is not True:
+              raise SystemExit("Order-history verification incomplete; claim is NOT confirmed")
+          games = data.get("games", [])
+          if any(game.get("status") not in {"newly_claimed", "previously_owned"} for game in games):
+              raise SystemExit("Unconfirmed games remain; claim is NOT confirmed")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write("## Epic order-history verification\n\n")
+              stream.write("No active zero-price promotions were found.\n" if not games else "")
+              for game in games:
+                  title = str(game["title"]).replace("\n", " ").replace("\r", " ")
+                  stream.write(f"- {title}: {game['status']}\n")
+          PY
 
       - name: Write failure summary
-        if: failure()
+        if: failure() || cancelled()
         run: |
-          if grep -Rqs -E \
-            'unable to download any more free games|wait 24 hours before trying again|free-game redemption rate limit detected' \
-            app/volumes/logs/ app/volumes/runtime/ 2>/dev/null; then
-            {
-              echo "## Claim not completed: Epic 24-hour limit"
-              echo
-              echo "本次领取未成功：Epic 已限制该账号继续领取免费游戏。"
-              echo
-              echo "Epic blocked additional free-game redemptions for the affected account. This run did not confirm a successful claim for that account."
-              echo
-              echo "Wait at least 24 hours before running the workflow again. Repeated retries during this period will not complete the claim."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "## Claim not completed"
-              echo
-              echo "本次领取未完成，不能视为领取成功。"
-              echo
-              echo "The workflow failed before all available games were confirmed in the library. Do not treat this run as a successful claim."
-              echo
-              echo "Review the failed step and uploaded runtime/log artifacts for the specific cause."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            echo "## Epic claim not confirmed"
+            echo
+            echo "本次未确认领取成功。检查失败步骤；邮箱、短信、Passkey 双重验证暂不受上游支持，请保留安全设置。"
+            echo "遇到 Epic 24 小时领取限制时，至少等待 24 小时；不要反复重跑。"
+            echo "本工作流沿用上游有限重试、60 分钟超时，并禁止重叠执行。"
+            echo "为保护账号数据，不上传原始日志、截图、录像、Cookie 或浏览器配置。"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload runtime artifacts
+      - name: Upload sanitized verification report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: epic-runtime-${{ github.run_id }}
-          path: |
-            app/volumes/runtime/
-            app/volumes/hcaptcha/.challenge/
-          include-hidden-files: true
-          retention-days: 7
-
-      - name: Upload log artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: epic-logs-${{ github.run_id }}
-          path: app/volumes/logs/
-          retention-days: 7
-
-      - name: Upload screenshot artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: epic-screenshots-${{ github.run_id }}
-          path: app/volumes/screenshots/
+          name: epic-verification-${{ github.run_id }}
+          path: app/volumes/runtime/claim-verification.json
+          if-no-files-found: ignore
           retention-days: 7
