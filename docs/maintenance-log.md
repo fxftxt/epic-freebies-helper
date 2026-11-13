@@ -1524,3 +1524,12 @@
 - Changed files: docs/maintenance-log.md only for this result; the local user-facing deployment report is updated separately.
 - Result: run conclusion failure, not a successful deployment acceptance. No further blind login dispatch is started. Keep the requested active weekly schedule and existing 2FA. The normal 15-minute authentication budget and 60-minute job protection remain; future scheduled attempts may still fail. The user should claim this week's games manually while unattended login remains unverified. Email/SMS/Passkey automation remains unsupported by upstream, and no TOTP secret was requested or configured.
 - Validation: recorded cloud run logs and allowlisted artifact metadata; compilation, fatal-error lint, protocol contract, and whitespace checks passed for the behavior changes. No unit test suite was run.
+
+## 2026-11-13 — User-requested normal-mode claiming attempt
+
+- Symptom: the owner requested another automatic claiming attempt after the bounded diagnostics. Dispatched run 43389528353 from 87c900f in normal mode, with cropped diagnostics disabled and the regular 900-second authentication budget.
+- Evidence: required-secret presence, audited dependency installation, protocol contract, and both browser installations passed. Completed job logs contain seven captcha-failure signals, zero captcha-success signals, one explicit 50-second GLM read-timeout retry warning, and no ImageAreaSelectChallenge schema validation error. No Login success, Authentication completed, or collection-start event appeared. GitHub returned no artifacts for this run.
+- Root-cause judgment: the run remains blocked before successful Epic authentication. It does not establish that the password is wrong or that an MFA challenge was reached; repeated captcha failure and intermittent model latency are the observed blockers.
+- Changed files: docs/maintenance-log.md only; the local user-facing deployment report is updated separately. No runtime behavior was changed for this attempt.
+- Result: failure at approximately 2026-11-13 16:13:52 Asia/Shanghai after the authentication phase exceeded 900 seconds. No purchase was attempted and no new ownership was confirmed. No automatic rerun was triggered. Existing 2FA, specified GLM model, zero-price gates, and active weekly scheduling remain unchanged.
+- Validation: retrieved completed logs and artifact metadata using the GitHub connector after local CLI monitoring became unreliable. No test suite was executed.
