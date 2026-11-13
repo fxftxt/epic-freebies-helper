@@ -1466,3 +1466,12 @@
 - Changed files: app/services/epic_games_service.py; docs/maintenance-log.md.
 - Change: require an HTTP success response and raise an explicit error for invalid JSON. A failed promotion snapshot remains a failure instead of an empty successful result.
 - Validation: Python compilation, fatal-error lint rules, and diff whitespace checks; no test suite or additional account login is performed.
+
+## 2026-11-13 — Cloud acceptance result: login captcha remains unresolved
+
+- Symptom: manual run 43376511261 passed required-secret presence, dependency setup, hCaptcha contract, Camoufox download, and Firefox fallback installation on Ubuntu 24.04, but remained in Epic login captcha handling for about 38 minutes.
+- Evidence: the GLM adapter selected glm-4.6v at the configured official endpoint and returned model answers. Logs show repeated failed captcha responses, two captcha-success signals without authenticated Epic access, login outcome timeouts, and two completed outer login retries. No `Login success`, `Authentication completed`, or `Starting free games collection process` event appeared. No verification report or artifact was produced.
+- Root-cause judgment: the observed blocker is unsuccessful cloud login captcha completion. The available evidence does not identify whether model accuracy, upstream captcha handling, or Epic risk checks are responsible. This run did not establish that the account reached an MFA challenge; unsupported email/SMS/Passkey remains a separate deployment limitation, not the proven cause of this attempt.
+- Changed files: docs/maintenance-log.md only for this result.
+- Result: cancelled run 43376511261 deliberately at 2026-11-13 14:46 Asia/Shanghai to stop repeated ineffective model calls and retrieve final logs. Its conclusion is cancelled, not success or timeout. No additional claiming run was started. The workflow remains active with Thursday 16:20 UTC / Friday 00:20 Beijing scheduling, upstream finite retries, 60-minute protection, and serialized runs, as requested. Actual login, checkout, and new ownership remain unverified. Keep the user's existing 2FA settings and never request credentials in chat.
+- Upstream review: master remains d90190bf3f9f87e9da71c50c81f155c4586bdb33 as of this review; open issue #30 reports a similar captcha-failure loop and has no merged corrective release. No speculative captcha/browser/model rewrite is applied.
