@@ -1508,3 +1508,11 @@
 - Changed files: app/extensions/llm_adapter.py; app/extensions/hcaptcha_adapter.py; docs/maintenance-log.md.
 - Change: express the exact answer field names, nested point/path structure, and enum values as short textual requirements; explicitly require an answer instance and prohibit schema echo. Save only the already cropped challenge/grid before invoking the model and update the allowlisted answer fields afterward.
 - Validation: Python compilation, fatal-error lint, workflow syntax, and hCaptcha protocol contract before a new five-minute diagnostic dispatch. Unit test execution remains prohibited. No account setting, model name, or purchase safeguard changes.
+
+## 2026-11-13 — Compare odd-shape structure instead of visual opacity
+
+- Symptom: run 43387265613 produced valid challenge_prompt/points answers without schema validation errors, but four captcha results failed before the 300-second authentication limit. No Epic login or collection was observed.
+- Root-cause judgment: the cropped final challenge asks for a nonmatching shape. Its left faded group and middle group have the same seven-cell structure, while the right group has a different structure. The model chose the left group at (461, 446), inside the captured page-coordinate bounds. This is evidence of an incorrect visual choice, rather than an out-of-bounds answer or a remaining schema-echo error; other challenge results and Epic risk decisions are not fully determined by this image.
+- Changed files: app/extensions/llm_adapter.py; docs/maintenance-log.md.
+- Change: add a conditional odd-shape instruction to point-selection requests: ignore opacity/brightness/background, compare complete group outlines and cell adjacency/count, and select one structurally different group. Keep the same GLM model, endpoint, coordinates, 2FA, and purchase guards.
+- Validation: compilation, fatal-error lint, and the existing protocol contract precede one more bounded cloud diagnostic. No test suite is executed. Run 43386912313 was cancelled before claiming because dispatch read the preceding revision; run 43387265613 is the verified 4139c31 revision.

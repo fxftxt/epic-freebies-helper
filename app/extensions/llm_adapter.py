@@ -89,6 +89,15 @@ GLM_MULTI_TARGET_INSTRUCTION = (
     "on the projection before answering."
 )
 
+GLM_ODD_SHAPE_INSTRUCTION = (
+    "If the image asks for the shape that does not match the others, compare the actual "
+    "geometric structure of every complete candidate. Ignore opacity, brightness, color, "
+    "background texture, position, and scale. A faded copy of the same shape still matches. "
+    "For shapes built from repeated cells, compare the number of cells and their adjacency "
+    "pattern before choosing; treat each connected group as a whole candidate. Select the "
+    "one structurally different group and return one point inside a solid part of that group."
+)
+
 
 def _glm_thinking_payload(model: str, config: Any) -> dict[str, str] | None:
     """Keep GLM point-selection calls within hCaptcha response budgets."""
@@ -1146,6 +1155,7 @@ class _GLMAsyncModels:
                 system_messages.append(GLM_COMPLEX_DRAG_INSTRUCTION)
             elif "points" in response_fields:
                 system_messages.append(GLM_MULTI_TARGET_INSTRUCTION)
+                system_messages.append(GLM_ODD_SHAPE_INSTRUCTION)
 
         if system_messages:
             messages.insert(0, {"role": "system", "content": "\n\n".join(system_messages)})
